@@ -1,0 +1,24 @@
+[project]
+name = "metasplit"
+authors = [
+  { name="Visentin Luca", email="luca.visentin@unito.it" },
+]
+description = "A program to split (very) large .csv files column-wise based on metadata "
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/MrHedmad/metasplit"
+"Bug Tracker" = "https://github.com/MrHedmad/metasplit/issues"
+
+[build-system]
+requires = ["flit_core>=3.4"]
+build-backend = "flit_core.buildapi"
+
+[project.scripts]
+metasplit = "metasplit.bin:main"
