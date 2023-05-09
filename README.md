@@ -1,5 +1,5 @@
 # Metasplit
-A program to split (very) large .csv files column-wise based on some other metadata file.
+A program to split (very) large .csv files column-wise based on some other metadata file with minimal memory overhead.
 
 ## Installation
 This needs the `xsv` binary in your PATH, since it uses it as a backend to do the heavy lifting. Install it from the [BurntSushi/xsv](https://github.com/BurntSushi/xsv) repository.
@@ -27,6 +27,8 @@ The query has many parts:
   - The first selection always starts with an `?`. This marks the beginning of the selection strings.
   - Every selection is of the form `variable` + `sign` + `value(s)`. The variable is the column to consider in the metadata. The value(s) are either one (`value`) or a list of (`[value1,value2,value3]`) of values to select the ids with. The sign might be either `=` or `!=` for the variable being equal to or not equal to the values, respectively.
   - Multiple selections may be chained together by starting new selection strings with either `&` or `|` for a logical AND or a logical OR with the previous selection.
+
+You can pass multiple selection strings as input, even from different metadata files. Each selection from every metadata file will be summed together to subset the final data file.
 
 ### Examples
 Some examples of query strings:
