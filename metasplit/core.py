@@ -18,10 +18,8 @@ from metasplit.errors import (
 
 log = logging.getLogger(__name__)
 
-FILE_VAR_REGEX = re.compile(r"^(.*?)@(.*?)\?(.*?)$")
+FILE_VAR_REGEX = re.compile(r"^(.*?)@(.*?)(\?.*?)$")
 """The regex that separates the file path, the id var and the selections"""
-SELECTION_VALUES_REGEX = re.compile(r"\[(.*?)(?:,(.*?))*\]")
-"""The regex that separates the lists of values to parse"""
 SELECTION_GRABBER_REGEX = re.compile(r"([?&\|].+?)(?:[?&\|]|$)")
 """This regex can match the start of a selection in order to consume it"""
 
@@ -53,10 +51,10 @@ class Selection:
     filter_values: list[str]
     """The values to filter by"""
 
-    @classmethod
-    def consume(string: str) -> tuple(Selection, Optional[str]):
+    @staticmethod
+    def consume(string: str) -> tuple[Selection, Optional[str]]:
         """Consume a string and return a Selection + the remaining string"""
-        if not (match := SELECTION_GRABBER_REGEX):
+        if not (match := SELECTION_GRABBER_REGEX.match(string)):
             raise InvalidSelectionError(
                 f"The string {string} cannot be parsed to a selection."
             )
@@ -65,9 +63,9 @@ class Selection:
         remaining_str: str = string[len(selection_str) :] or None
 
         if selection_str.startswith("?") or selection_str.startswith("|"):
-            union = SelectionSign.POSITIVE
+            union = UnionSign.POSITIVE
         elif selection_str.startswith("&"):
-            union = SelectionSign.NEGATIVE
+            union = UnionSign.NEGATIVE
         else:
             raise InvalidSelectionError(
                 f"The character {selection_str[0]} cannot be parsed as a selection sign. Valid signs are '?', '|' or '&'"
@@ -77,20 +75,21 @@ class Selection:
 
         # Now we can parse the selection string
         if "!=" in selection_str:
-            sign = UnionSign.NOT_EQUAL_TO
+            sign = SelectionSign.NOT_EQUAL_TO
             pieces = selection_str.split("!=")
         elif "=" in selection_str:
-            sign = UnionSign.EQUAL_TO
+            sign = SelectionSign.EQUAL_TO
             pieces = selection_str.split("=")
         else:
             raise InvalidSelectionError(
                 f"Invalid value selection string {selection_str}"
             )
 
-        if match := SELECTION_VALUES_REGEX.match(pieces[1]):
+        if pieces[1].startswith("[") and pieces[1].endswith("]"):
             # If this matches, then the selection is of the form
             # [aaa,bbb,...] and we need to unpack it
-            values = [x for x in match.groups() if x is not None]
+            packed_values = pieces[1].strip("[]")
+            values = packed_values.split(",")
         else:
             # If that did not match, then we consider this as just one
             # selection
@@ -106,16 +105,16 @@ class Selection:
             remaining_str,
         )
 
-    @classmethod
-    def consume_all(string: str) -> tuple(Selection):
+    @staticmethod
+    def consume_all(string: str) -> tuple[Selection]:
         """Recursively consume a string to obtain all the possible selections from it"""
         selections = []
         while True:
-            selection, remainder = MetaPath.consume(string)
+            selection, remainder = Selection.consume(string)
             selections.append(selection)
             if remainder is None:
                 return tuple(selections)
-            string = selection
+            string = remainder
 
 
 class MetaPath:
@@ -131,15 +130,8 @@ class MetaPath:
         self.original: str = meta_string
 
         self.file: Path = Path(matches.group(1)).expanduser().resolve()
-        assert self.file.exists(), f"File {self.file} not found."
         self.selection_var: str = matches.group(2)
         self.selections: tuple[Selection] = Selection.consume_all(matches.group(3))
-
-        ## Validity checks
-        headers = exec(["xsv", "headers", "-j", self.file]).split("\n")
-        assert (
-            self.variable in headers
-        ), f"Header {self.variable} not in metadata headers"
 
     def __str__(self) -> str:
         return f"{type(self).__name__} object :: file {self.file} selecting {self.selection_var} on {self.variable} with {self.values}"
@@ -193,8 +185,10 @@ def metasplit(
     output_file: Path,
     ignore_missing: bool = False,
     input_delimiter: str = ",",
+    always_include: Optional[list[str]] = None,
 ) -> None:
-    assert input_file.exists(), f"Input csv {input_file} does not exist."
+    if not input_file.exists():
+        raise ValueError(f"Input csv {input_file} does not exist.")
 
     SELECTION_COLNAMES = []
     # We can now select the columns of interest
@@ -208,7 +202,7 @@ def metasplit(
         for sel in meta.selections:
             assert (
                 sel.filter_variable in meta_headers
-            ), f"Variable {sel.filter_variable} not found in metadata headers"
+            ), f"Variable {sel.filter_variable} not found in metadata headers ({meta_headers})"
             var_values = xsv_select(meta.file, sel.filter_variable)
             sel_indexes = indexes_of(var_values, sel.filter_values)
             if not sel_indexes:
@@ -233,10 +227,13 @@ def metasplit(
 
     # We now have our indexes. select the columns with the indexes
     headers = get_headers(input_file, input_delimiter)
-    SELECTION_COLNAMES = headers[indexes]
+    SELECTION_COLNAMES = [headers[x] for x in indexes]
 
     if not SELECTION_COLNAMES:
         raise NoSelectionError("Nothing was selected by the metadata directives")
+
+    if always_include:
+        SELECTION_COLNAMES.extend(always_include)
 
     target_headers = get_headers(input_file, input_delimiter)
     log.info(f"Target has {len(target_headers)} columns.")
