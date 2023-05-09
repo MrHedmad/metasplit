@@ -1,5 +1,4 @@
 from metasplit.core import metasplit, MetaPath
-from metasplit.bin import main
 from tests.fixtures import test_matrix_data, test_selection_data
 
 
