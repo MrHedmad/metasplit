@@ -12,6 +12,9 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dynamic = ["version"]
+dependencies = [
+    "colorama==0.4.6"
+]
 
 [project.urls]
 "Homepage" = "https://github.com/MrHedmad/metasplit"

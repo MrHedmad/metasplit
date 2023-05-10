@@ -1,12 +1,5 @@
-import collections
-import importlib.resources as pkg_resources
 import logging
-import os
-from copy import copy
-from functools import reduce
 from logging import StreamHandler
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from colorama import Back, Fore, Style, init
 
