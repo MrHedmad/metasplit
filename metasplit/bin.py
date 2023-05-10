@@ -36,7 +36,7 @@ def main():
     always_include = args.always_include.split(",") if args.always_include else None
 
     metasplit(
-        metadata=[MetaPath(x) for x in args.metadata],
+        metadata=[MetaPath(x) for x in args.selection_string],
         input_file=args.input_csv,
         output_file=args.output_csv,
         ignore_missing=args.ignore_missing,

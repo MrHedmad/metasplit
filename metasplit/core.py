@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 import logging
+import math
 
 import subprocess as sb
 import re
@@ -138,7 +139,7 @@ class MetaPath:
 
 
 def exec(*args, **kwargs) -> str:
-    res = sb.run(*args, **kwargs, encoding="UTF-8", capture_output=True)
+    res = sb.run(*args, **kwargs, encoding="UTF-8", capture_output=True, errors="replace")
 
     if res.returncode != 0:
         raise ReturnCodeError(
@@ -178,6 +179,93 @@ def indexes_of(list: list[str], selection: list[str]) -> list[int]:
 def invert_index(list_len: int, indexes: list[int]) -> list[int]:
     return [i for i in range(list_len) if i not in indexes]
 
+class NumberCompressor:
+    def __init__(self) -> None:
+        self.compressed = []
+        self.expected_number = None
+        self.buffer = []
+    
+    def flush(self):
+        if not self.buffer:
+            return
+        if len(self.buffer) == 1:
+            self.compressed.append(f"{self.buffer[0]}")
+        else:
+            self.compressed.append(f"{min(self.buffer)}-{max(self.buffer)}")
+        self.buffer = []
+
+    def gobble(self, i: int) -> None:
+        if self.expected_number is None or i == self.expected_number:
+            self.expected_number = i+1
+            self.buffer.append(i)
+            return
+
+        self.flush()
+        self.buffer.append(i)
+        self.expected_number = i+1
+
+
+def compress_selection_string(selection: list):
+    original_len = len(selection)
+    # We can compress the numbers as x-y, while we cannot compress the strings
+    numbers = []
+    strings = []
+    for item in selection:
+        try:
+            numbers.append(int(item))
+        except ValueError:
+            strings.append(item)
+    
+    assert (len(numbers) + len(strings)) == original_len
+
+    compressor = NumberCompressor()
+    for i in sorted(numbers):
+        compressor.gobble(i)
+    compressor.flush()
+
+    compressed = compressor.compressed
+    compressed.extend([f'"{x}"' for x in strings])
+
+    rate = round((len(compressed) - original_len) / original_len * 100, 2)
+    log.info(f"Compressed selection from {original_len} to {len(compressed)}. Rate: -{rate}%")
+
+    return compressed
+
+def select_meta_indexes(meta: MetaPath) -> list[int]:
+    meta_headers = get_headers(meta.file)
+    log.info(f"Processing {meta.file} - found {len(meta_headers)} headers.")
+
+    # We how have to process the selections, from right to left, in order
+    # to select the values in this metadata
+    indexes = []
+    for sel in meta.selections:
+        assert (
+            sel.filter_variable in meta_headers
+        ), f"Variable {sel.filter_variable} not found in metadata headers ({meta_headers})"
+        var_values = xsv_select(meta.file, sel.filter_variable)
+        sel_indexes = indexes_of(var_values, sel.filter_values)
+        if not sel_indexes:
+            raise NoSelectionError(
+                f"Variable {sel.filter_variable} has no selection in {sel.filter_values}"
+            )
+        # Ok, we now have the indexes of this selection.
+        # If the selection was negative (!=) we need to select the opposite
+        # though, and this is what we do here:
+        if sel.sign is SelectionSign.NOT_EQUAL_TO:
+            sel_indexes = invert_index(
+                len(var_values), sel_indexes
+            )  # We need to select every OTHER index
+        # Now we need to add or remove the selection indexes to the overall index
+        if sel.union is UnionSign.NEGATIVE:
+            # we need to remove these from the indexes
+            indexes = [x for x in indexes if x not in sel_indexes]
+        elif sel.union is UnionSign.POSITIVE:
+            # we need to add these from the indexes
+            indexes.extend(sel_indexes)
+            indexes = list(set(indexes))  # remove duplicates
+    
+    return indexes
+
 
 def metasplit(
     metadata: list[MetaPath],
@@ -190,67 +278,36 @@ def metasplit(
     if not input_file.exists():
         raise ValueError(f"Input csv {input_file} does not exist.")
 
-    SELECTION_COLNAMES = []
+    target_headers = get_headers(input_file, input_delimiter)
+    SELECTIONS = []
     # We can now select the columns of interest
     for meta in metadata:
-        meta_headers = get_headers(meta.file)
-        log.info(f"Processing {meta.file} - found {len(meta_headers)} headers.")
+        indexes = select_meta_indexes(meta)
+        selected_ids = xsv_select(meta.file, meta.selection_var)
+        # We now have our indexes. We have to check if they are all in the
+        # target file
+        if ignore_missing:
+            indexes = [i for i in indexes if selected_ids[i] in target_headers]
+        
+        # We can now extend the selections with the new, valid, indexes
+        # Python is 0-based but xsv is 1-based, so we need to increase the indexes by 1
+        SELECTIONS.extend([selected_ids[x + 1] for x in indexes])
 
-        # We how have to process the selections, from right to left, in order
-        # to select the values in this metadata
-        indexes = []
-        for sel in meta.selections:
-            assert (
-                sel.filter_variable in meta_headers
-            ), f"Variable {sel.filter_variable} not found in metadata headers ({meta_headers})"
-            var_values = xsv_select(meta.file, sel.filter_variable)
-            sel_indexes = indexes_of(var_values, sel.filter_values)
-            if not sel_indexes:
-                raise NoSelectionError(
-                    f"Variable {sel.filter_variable} has no selection in {sel.filter_values}"
-                )
-            # Ok, we now have the indexes of this selection.
-            # If the selection was negative (!=) we need to select the opposite
-            # though, and this is what we do here:
-            if sel.sign is SelectionSign.NOT_EQUAL_TO:
-                sel_indexes = invert_index(
-                    len(var_values), sel_indexes
-                )  # We need to select every OTHER index
-            # Now we need to add or remove the selection indexes to the overall index
-            if sel.union is UnionSign.NEGATIVE:
-                # we need to remove these from the indexes
-                indexes = [x for x in indexes if x not in sel_indexes]
-            elif sel.union is UnionSign.POSITIVE:
-                # we need to add these from the indexes
-                indexes.extend(sel_indexes)
-                indexes = list(set(indexes))  # remove duplicates
+    if not SELECTIONS:
+        raise NoSelectionError("Nothing survived after the selection")
 
-    # We now have our indexes. select the columns with the indexes
-    headers = get_headers(input_file, input_delimiter)
-    SELECTION_COLNAMES = [headers[x] for x in indexes]
-
-    if not SELECTION_COLNAMES:
-        raise NoSelectionError("Nothing was selected by the metadata directives")
+    SELECTIONS = list(dict.fromkeys(SELECTIONS))
 
     if always_include:
-        SELECTION_COLNAMES.extend(always_include)
+        SELECTIONS.extend(always_include)
+        SELECTIONS = list(dict.fromkeys(SELECTIONS))
 
-    target_headers = get_headers(input_file, input_delimiter)
-    log.info(f"Target has {len(target_headers)} columns.")
-
-    if ignore_missing:
-        SELECTION_COLNAMES = [x for x in SELECTION_COLNAMES if x in target_headers]
-
-        if not SELECTION_COLNAMES:
-            raise NoSelectionError("Nothing survived after removing missing headers")
-    else:
-        if any([x not in target_headers for x in SELECTION_COLNAMES]):
-            raise MissingHeaderError(
-                "Some metadata selected headers are not in the subsetted matrix"
-            )
-
-    print(f"Selecting {len(SELECTION_COLNAMES)} results...")
-    selection_str = ",".join([f'"{x}"' for x in SELECTION_COLNAMES])
+    log.info(f"Selecting {len(SELECTIONS)} results...")
+    # Return to indexes so we can select 
+    SELECTIONS = indexes_of(target_headers, SELECTIONS)
+    SELECTIONS = [x + 1 for x in SELECTIONS]
+    SELECTIONS = compress_selection_string(SELECTIONS)
+    selection_str = ",".join(SELECTIONS)
     xsv_select(
         input_file,
         selection_str,
