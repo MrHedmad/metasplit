@@ -24,8 +24,16 @@ def main():
         default=",",
         help="The delimiter to use in the input file.",
     )
+    parser.add_argument(
+        "--always_include",
+        type=str,
+        default=None,
+        help="A comma-separated list of columns to always include in the output.",
+    )
 
     args = parser.parse_args()
+
+    always_include = args.always_include.split(",") if args.always_include else None
 
     metasplit(
         metadata=[MetaPath(x) for x in args.metadata],
@@ -33,4 +41,5 @@ def main():
         output_file=args.output_csv,
         ignore_missing=args.ignore_missing,
         input_delimiter=args.input_delimiter,
+        always_include=always_include
     )
