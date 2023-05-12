@@ -289,7 +289,7 @@ def select_meta_ids(metadata: list[MetaPath]) -> list[int]:
             if sel.union is UnionSign.NEGATIVE:
                 # we need to remove these from the indexes
                 old_len = len(this_meta_indexes)
-                this_meta_indexes = [x for x in this_meta_indexes if x not in sel_indexes]
+                this_meta_indexes = [x for x in sel_indexes if x not in this_meta_indexes]
                 log.debug(f"Negative union: removed {len(this_meta_indexes) - old_len} indexes.")
             elif sel.union is UnionSign.POSITIVE:
                 # we need to add these from the indexes
