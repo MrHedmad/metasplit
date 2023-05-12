@@ -15,10 +15,10 @@ def test_metasplit(test_matrix_data, test_selection_data, tmp_path):
     )
 
     written_data = output_file.open("r").read()
-    expected = """id2,id4,id6,id5
-b,d,f,e
-h,j,l,k
-n,p,r,q
-t,v,x,w
+    expected = """id2,id4,id5,id6
+b,d,e,f
+h,j,k,l
+n,p,q,r
+t,v,w,x
 """
     assert written_data == expected

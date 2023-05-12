@@ -126,7 +126,7 @@ class MetaPath:
         # This has:
         # Group 1: The file path
         # Group 2: The variable to select
-        # Group 3: all the rest of the query (except the first ?)
+        # Group 3: all the rest of the query
 
         self.original: str = meta_string
 
@@ -231,40 +231,82 @@ def compress_selection_string(selection: list):
 
     return compressed
 
-def select_meta_indexes(meta: MetaPath) -> list[int]:
-    meta_headers = get_headers(meta.file)
-    log.info(f"Processing {meta.file} - found {len(meta_headers)} headers.")
+def select_meta_ids(metadata: list[MetaPath]) -> list[int]:
+    """This function selects the IDs from the metadata files following the MetaPath instructions
 
-    # We how have to process the selections, from right to left, in order
-    # to select the values in this metadata
-    indexes = []
-    for sel in meta.selections:
-        assert (
-            sel.filter_variable in meta_headers
-        ), f"Variable {sel.filter_variable} not found in metadata headers ({meta_headers})"
-        var_values = xsv_select(meta.file, sel.filter_variable)
-        sel_indexes = indexes_of(var_values, sel.filter_values)
-        if not sel_indexes:
-            raise NoSelectionError(
-                f"Variable {sel.filter_variable} has no selection in {sel.filter_values}"
-            )
-        # Ok, we now have the indexes of this selection.
-        # If the selection was negative (!=) we need to select the opposite
-        # though, and this is what we do here:
-        if sel.sign is SelectionSign.NOT_EQUAL_TO:
-            sel_indexes = invert_index(
-                len(var_values), sel_indexes
-            )  # We need to select every OTHER index
-        # Now we need to add or remove the selection indexes to the overall index
-        if sel.union is UnionSign.NEGATIVE:
-            # we need to remove these from the indexes
-            indexes = [x for x in indexes if x not in sel_indexes]
-        elif sel.union is UnionSign.POSITIVE:
-            # we need to add these from the indexes
-            indexes.extend(sel_indexes)
-            indexes = list(set(indexes))  # remove duplicates
+    Args:
+        metadata (list[MetaPath]): A list of MetaPaths to use
+
+    Raises:
+        NoSelectionError: If any MetaPath selects no IDs
+
+    Returns:
+        list[str]: The selected IDs from the metadata
+    """
+    selected_ids = [] # This holds the overall selected indexes, and gets returned
+
+    # Every MetaPath is processed independently of any other.
+    for meta in metadata:
+        # We now need to:
+        # - Find the ID column
+        # - Find which indexes to select IDs with based on the selections
+        # - Convert from indexes to IDs
+        # - Add the IDs to the overall selection
+        this_meta_indexes = []
+        meta_headers = get_headers(meta.file)
+        log.debug(f"Processing {meta.file} - found {len(meta_headers)} headers.")
+        # We how have to process the selections, from right to left, in order
+        # to select the values in this metadata
+        
+        for sel in meta.selections:
+            # The variable must be in the headers
+            log.debug(f"Selecting variable {sel.filter_variable} on values {sel.filter_values}")
+            assert (
+                sel.filter_variable in meta_headers
+            ), f"Variable {sel.filter_variable} not found in metadata headers ({meta_headers})"
+
+            # We can now take out the values for this variable, and convert them
+            # to indexes
+            var_values = xsv_select(meta.file, sel.filter_variable)
+            sel_indexes = indexes_of(var_values, sel.filter_values)
+            log.debug(f"Selected {len(sel_indexes)} selection indexes")
+
+            if not sel_indexes:
+                raise NoSelectionError(
+                    f"Variable {sel.filter_variable} has no selection in {sel.filter_values}"
+                )
+            # Ok, we now have the indexes of this selection.
+            # If the selection was negative (!=) we need to select the opposite
+            # though, and this is what we do here:
+            if sel.sign is SelectionSign.NOT_EQUAL_TO:
+                sel_indexes = invert_index(
+                    len(var_values), sel_indexes
+                )  # We need to select every OTHER index
+                log.debug(f"Inverted selection to {len(sel_indexes)} indexes.")
+            
+            # Now we need to add or remove this selection's indexes to the more
+            # generic meta index
+            if sel.union is UnionSign.NEGATIVE:
+                # we need to remove these from the indexes
+                old_len = len(this_meta_indexes)
+                this_meta_indexes = [x for x in this_meta_indexes if x not in sel_indexes]
+                log.debug(f"Negative union: removed {len(this_meta_indexes) - old_len} indexes.")
+            elif sel.union is UnionSign.POSITIVE:
+                # we need to add these from the indexes
+                old_len = len(this_meta_indexes)
+                this_meta_indexes.extend(sel_indexes)
+                this_meta_indexes = list(set(this_meta_indexes))  # remove duplicates
+                log.debug(f"Positive union: added {len(this_meta_indexes) - old_len} indexes")
+            
+        # When we get here, the indexes are correct, and we parsed all selections
+        # We now have to convert from the indexes to the IDs
+        # We always add here.
+        meta_ids = xsv_select(meta.file, meta.selection_var)
+        selected_ids.extend([meta_ids[i] for i in this_meta_indexes])
     
-    return indexes
+    # After parsing all selections, we just return.
+    log.debug(f"Returning {len(selected_ids)} ids")
+    return selected_ids
 
 
 def metasplit(
@@ -279,33 +321,27 @@ def metasplit(
         raise ValueError(f"Input csv {input_file} does not exist.")
 
     target_headers = get_headers(input_file, input_delimiter)
-    SELECTIONS = []
+
     # We can now select the columns of interest
-    for meta in metadata:
-        indexes = select_meta_indexes(meta)
-        selected_ids = xsv_select(meta.file, meta.selection_var)
-        # We now have our indexes. We have to check if they are all in the
-        # target file
-        if ignore_missing:
-            indexes = [i for i in indexes if selected_ids[i] in target_headers]
-        
-        # We can now extend the selections with the new, valid, indexes
-        # Python is 0-based but xsv is 1-based, so we need to increase the indexes by 1
-        SELECTIONS.extend([selected_ids[x + 1] for x in indexes])
-
-    if not SELECTIONS:
-        raise NoSelectionError("Nothing survived after the selection")
-
-    SELECTIONS = list(dict.fromkeys(SELECTIONS))
-
+    selected_ids = select_meta_ids(metadata)
+    
+    # We now have our Ids. We have to check if they are all in the
+    # target file and discard them if we are told to ignore the missing IDs
+    if ignore_missing:
+        selected_ids = [id for id in selected_ids if id in target_headers]
+    
     if always_include:
-        SELECTIONS.extend(always_include)
-        SELECTIONS = list(dict.fromkeys(SELECTIONS))
+        selected_ids.extend(always_include)
+        selected_ids = list(dict.fromkeys(selected_ids))
+
+    # For compactness, we have to go back to 1-based column indexes, so our
+    # xsv calls do not exceed the max command len imposed by bash.
+    SELECTIONS = [x + 1 for x in indexes_of(target_headers, selected_ids)]
+
+    # We're done. We just need to pass these selections to XSV
 
     log.info(f"Selecting {len(SELECTIONS)} results...")
-    # Return to indexes so we can select 
-    SELECTIONS = indexes_of(target_headers, SELECTIONS)
-    SELECTIONS = [x + 1 for x in SELECTIONS]
+    # Compress the IDs further...
     SELECTIONS = compress_selection_string(SELECTIONS)
     selection_str = ",".join(SELECTIONS)
     xsv_select(
@@ -317,3 +353,4 @@ def metasplit(
     )
 
     print("Done!")
+
