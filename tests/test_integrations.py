@@ -22,3 +22,87 @@ n,p,q,r
 t,v,w,x
 """
     assert written_data == expected
+
+def test_and(test_matrix_data, test_selection_data, tmp_path):
+    query = f"{test_matrix_data}@id?col3=beta&col1!=[d,e,f]"
+    output_file = tmp_path / "out.csv"
+    metasplit(
+        [MetaPath(query)],
+        input_file=test_selection_data,
+        output_file=output_file,
+        ignore_missing=False,
+        input_delimiter=",",
+        always_include=["id5"]
+    )
+
+    written_data = output_file.open("r").read()
+    expected = """id2,id5
+b,e
+h,k
+n,q
+t,w
+"""
+    assert written_data == expected
+
+def test_or(test_matrix_data, test_selection_data, tmp_path):
+    query = f"{test_matrix_data}@id?col3=beta|col1!=[d,e,f]"
+    output_file = tmp_path / "out.csv"
+    metasplit(
+        [MetaPath(query)],
+        input_file=test_selection_data,
+        output_file=output_file,
+        ignore_missing=False,
+        input_delimiter=",",
+        always_include=None
+    )
+
+    written_data = output_file.open("r").read()
+    expected = """id1,id2,id3,id4,id6
+a,b,c,d,f
+g,h,i,j,l
+m,n,o,p,r
+s,t,u,v,x
+"""
+    assert written_data == expected
+
+def test_double_and(test_matrix_data, test_selection_data, tmp_path):
+    query = f"{test_matrix_data}@id?col3=beta&col1=[a,b,c]&col1!=a"
+    output_file = tmp_path / "out.csv"
+    metasplit(
+        [MetaPath(query)],
+        input_file=test_selection_data,
+        output_file=output_file,
+        ignore_missing=False,
+        input_delimiter=",",
+        always_include=None
+    )
+
+    written_data = output_file.open("r").read()
+    expected = """id2
+b
+h
+n
+t
+"""
+    assert written_data == expected
+
+def test_and_or(test_matrix_data, test_selection_data, tmp_path):
+    query = f"{test_matrix_data}@id?col3=beta|col1=[a,b,c]&col1!=a"
+    output_file = tmp_path / "out.csv"
+    metasplit(
+        [MetaPath(query)],
+        input_file=test_selection_data,
+        output_file=output_file,
+        ignore_missing=False,
+        input_delimiter=",",
+        always_include=None
+    )
+
+    written_data = output_file.open("r").read()
+    expected = """id2,id3,id4,id6
+b,c,d,f
+h,i,j,l
+n,o,p,r
+t,u,v,x
+"""
+    assert written_data == expected
