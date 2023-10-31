@@ -227,7 +227,7 @@ def compress_selection_string(selection: list):
     compressed.extend([f'"{x}"' for x in strings])
 
     rate = round((len(compressed) - original_len) / original_len * 100, 2)
-    log.info(f"Compressed selection from {original_len} to {len(compressed)}. Rate: -{rate}%")
+    log.debug(f"Compressed selection from {original_len} to {len(compressed)}. Rate: -{rate}%")
 
     return compressed
 
@@ -352,5 +352,5 @@ def metasplit(
         output_file=output_file,
     )
 
-    print("Done!")
+    log.debug("Done!")
 
