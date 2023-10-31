@@ -39,9 +39,8 @@ log.propagate = False
 format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 console_formatter = ColorFormatter(format)
 
-
 stream_h = StreamHandler()
 stream_h.setFormatter(console_formatter)
-stream_h.setLevel(logging.DEBUG)
+stream_h.setLevel(logging.INFO)
 
 log.addHandler(stream_h)

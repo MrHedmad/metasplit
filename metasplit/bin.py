@@ -30,10 +30,17 @@ def main():
         default=None,
         help="A comma-separated list of columns to always include in the output.",
     )
+    parser.add_argument("--verbose", action="store_true", help="Increase verbosity")
 
     args = parser.parse_args()
 
     always_include = args.always_include.split(",") if args.always_include else None
+
+    if args.verbose:
+        import logging
+        root_logger = logging.getLogger("metasplit")
+        for handler in root_logger.handlers:
+            handler.setLevel(logging.DEBUG)
 
     metasplit(
         metadata=[MetaPath(x) for x in args.selection_string],
