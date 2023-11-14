@@ -341,6 +341,9 @@ def metasplit(
     # xsv calls do not exceed the max command len imposed by bash.
     SELECTIONS = [x + 1 for x in indexes_of(target_headers, selected_ids)]
 
+    if len(SELECTIONS) == 0:
+        raise InvalidSelectionError("There is nothing to select.")
+
     # We're done. We just need to pass these selections to XSV
 
     log.info(f"Selecting {len(SELECTIONS)} results...")
