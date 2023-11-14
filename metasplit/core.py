@@ -322,6 +322,9 @@ def metasplit(
 
     target_headers = get_headers(input_file, input_delimiter)
 
+    if len(target_headers) == 1:
+        log.warn("I only read one header. This might mean you gave me the wrong delimiter.")
+
     # We can now select the columns of interest
     selected_ids = select_meta_ids(metadata)
     
