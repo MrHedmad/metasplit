@@ -235,11 +235,14 @@ def compress_selection_string(selection: list):
     return compressed
 
 
-def select_meta_ids(metadata: list[MetaPath]) -> list[int]:
+def select_meta_ids(metadata: list[MetaPath], intersect: bool) -> list[int]:
     """This function selects the IDs from the metadata files following the MetaPath instructions
 
     Args:
         metadata (list[MetaPath]): A list of MetaPaths to use
+        intersect (bool): How to handle multiple MetaPaths. If `False`, concatenates
+            the result (a sort of OR). If `True`, computes the intersection of
+            each MetaPath (a sort of AND).
 
     Raises:
         NoSelectionError: If any MetaPath selects no IDs
@@ -310,9 +313,21 @@ def select_meta_ids(metadata: list[MetaPath]) -> list[int]:
 
         # When we get here, the indexes are correct, and we parsed all selections
         # We now have to convert from the indexes to the IDs
-        # We always add here.
         meta_ids = xsv_select(meta.file, meta.selection_var)
-        selected_ids.extend([meta_ids[i] for i in this_meta_indexes])
+
+        # We need to add these IDs to the selected_ids variable.
+        # If we have to compute the intersect, we do so here.
+        # If this is the first metadata, there is nothing to intersect with,
+        # so we just extend the empty list.
+        if intersect and len(selected_ids) != 0:
+            this_meta_ids = [meta_ids[i] for i in this_meta_indexes]
+            # There is no difference in these calls:
+            # - [x for x in this_meta_ids if x in selected_ids]
+            # - [x for x in selected_ids if x in this_meta_ids]
+            # So I just used one of the two.
+            selected_ids = [x for x in selected_ids if x in this_meta_ids]
+        else:
+            selected_ids.extend([meta_ids[i] for i in this_meta_indexes])
 
     # After parsing all selections, we just return.
     log.debug(f"Returning {len(selected_ids)} ids")
@@ -323,6 +338,7 @@ def metasplit(
     metadata: list[MetaPath],
     input_file: Path,
     output_file: Path,
+    intersect: bool = False,
     ignore_missing: bool = False,
     input_delimiter: str = ",",
     always_include: Optional[list[str]] = None,
@@ -338,7 +354,7 @@ def metasplit(
         )
 
     # We can now select the columns of interest
-    selected_ids = select_meta_ids(metadata)
+    selected_ids = select_meta_ids(metadata, intersect)
 
     # We now have our Ids. We have to check if they are all in the
     # target file and discard them if we are told to ignore the missing IDs

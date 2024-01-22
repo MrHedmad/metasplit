@@ -9,10 +9,17 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "selection_string", type=str, nargs="+", help="Selection string(s). Read the README for a guide on how to write these."
+        "selection_string",
+        type=str,
+        nargs="+",
+        help="Selection string(s). Read the README for a guide on how to write these.",
     )
-    parser.add_argument("input_csv", type=Path, help="The csv to subset with the metadata.")
-    parser.add_argument("output_csv", type=Path, help="The file to save the subsetted data in.")
+    parser.add_argument(
+        "input_csv", type=Path, help="The csv to subset with the metadata."
+    )
+    parser.add_argument(
+        "output_csv", type=Path, help="The file to save the subsetted data in."
+    )
     parser.add_argument(
         "--ignore_missing",
         action="store_true",
@@ -30,6 +37,11 @@ def main():
         default=None,
         help="A comma-separated list of columns to always include in the output.",
     )
+    parser.add_argument(
+        "--intersect",
+        action="store_true",
+        help="If set, combine different metadata files with an 'AND' selector istead of an 'OR'.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Increase verbosity")
 
     args = parser.parse_args()
@@ -38,6 +50,7 @@ def main():
 
     if args.verbose:
         import logging
+
         root_logger = logging.getLogger("metasplit")
         for handler in root_logger.handlers:
             handler.setLevel(logging.DEBUG)
@@ -46,7 +59,8 @@ def main():
         metadata=[MetaPath(x) for x in args.selection_string],
         input_file=args.input_csv,
         output_file=args.output_csv,
+        intersect=args.intersect,
         ignore_missing=args.ignore_missing,
         input_delimiter=args.input_delimiter,
-        always_include=always_include
+        always_include=always_include,
     )
