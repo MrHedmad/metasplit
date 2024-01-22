@@ -28,10 +28,12 @@ The query has many parts:
   - Every selection is of the form `variable` + `sign` + `value(s)`. The variable is the column to consider in the metadata. The value(s) are either one (`value`) or a list of (`[value1,value2,value3]`) of values to select the ids with. The sign might be either `=` or `!=` for the variable being equal to or not equal to the values, respectively.
   - Multiple selections may be chained together by starting new selection strings with either `&` or `|` for a logical AND or a logical OR with the previous selection.
 
-You can pass multiple selection strings as input, even from different metadata files. Each selection from every metadata file will be summed together to subset the final data file.
+You can pass multiple selection strings as input, even from different metadata files. Each selection from every metadata file will be summed together (a sort of "OR") to subset the final data file.
+If you instead wish to only keep IDs that satisfy your selections in **every** metadata file (a sort of "AND"), you can pass the `--intersect` flag to do just that.
 
 ### Examples
 Some examples of query strings:
 - `~/metadata.csv@gene_id?sample_type=tumor`: Read the `~/metadata.csv` file, and select column ids in the `gene_id` column where the column `sample_type` is equal to `tumor`.
 - `~/metadata.csv@gene_id?type=[primary_tumor,metastasis]&study=tcga`: Similar to the previous example, select where `type` is either `primary_tumor` or `metastasis` AND the `study` is `tcga`.
 - `~/metadata.csv@gene_id?study=tcga|selection=manually_selected`: select where `study` is equal to `tcga` OR the `selection` is `manually_selected`.
+- `~/metadata.csv@sample_id?study=tcga ~/clinical_metadata.csv@patient_id?smoker=true|exposed_to_asbestos=true --intersect`: select in the `metadata.csv` file where `study` is equal to `tcga`. Then, select in the `clinical_metadata.csv` file where `smoker` is `true` OR `exposed_to_asbestos` is `true`. Keep only samples that satisfy both selections (due to the `--intersect` flag). 
