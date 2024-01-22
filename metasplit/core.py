@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 import logging
-import math
 
 import subprocess as sb
 import re
@@ -13,7 +12,6 @@ import re
 from metasplit.errors import (
     ReturnCodeError,
     NoSelectionError,
-    MissingHeaderError,
     InvalidSelectionError,
 )
 
@@ -139,7 +137,9 @@ class MetaPath:
 
 
 def exec(*args, **kwargs) -> str:
-    res = sb.run(*args, **kwargs, encoding="UTF-8", capture_output=True, errors="replace")
+    res = sb.run(
+        *args, **kwargs, encoding="UTF-8", capture_output=True, errors="replace"
+    )
 
     if res.returncode != 0:
         raise ReturnCodeError(
@@ -179,12 +179,13 @@ def indexes_of(list: list[str], selection: list[str]) -> list[int]:
 def invert_index(list_len: int, indexes: list[int]) -> list[int]:
     return [i for i in range(list_len) if i not in indexes]
 
+
 class NumberCompressor:
     def __init__(self) -> None:
         self.compressed = []
         self.expected_number = None
         self.buffer = []
-    
+
     def flush(self):
         if not self.buffer:
             return
@@ -196,13 +197,13 @@ class NumberCompressor:
 
     def gobble(self, i: int) -> None:
         if self.expected_number is None or i == self.expected_number:
-            self.expected_number = i+1
+            self.expected_number = i + 1
             self.buffer.append(i)
             return
 
         self.flush()
         self.buffer.append(i)
-        self.expected_number = i+1
+        self.expected_number = i + 1
 
 
 def compress_selection_string(selection: list):
@@ -215,7 +216,7 @@ def compress_selection_string(selection: list):
             numbers.append(int(item))
         except ValueError:
             strings.append(item)
-    
+
     assert (len(numbers) + len(strings)) == original_len
 
     compressor = NumberCompressor()
@@ -227,9 +228,12 @@ def compress_selection_string(selection: list):
     compressed.extend([f'"{x}"' for x in strings])
 
     rate = round((len(compressed) - original_len) / original_len * 100, 2)
-    log.debug(f"Compressed selection from {original_len} to {len(compressed)}. Rate: -{rate}%")
+    log.debug(
+        f"Compressed selection from {original_len} to {len(compressed)}. Rate: -{rate}%"
+    )
 
     return compressed
+
 
 def select_meta_ids(metadata: list[MetaPath]) -> list[int]:
     """This function selects the IDs from the metadata files following the MetaPath instructions
@@ -243,7 +247,7 @@ def select_meta_ids(metadata: list[MetaPath]) -> list[int]:
     Returns:
         list[str]: The selected IDs from the metadata
     """
-    selected_ids = [] # This holds the overall selected indexes, and gets returned
+    selected_ids = []  # This holds the overall selected indexes, and gets returned
 
     # Every MetaPath is processed independently of any other.
     for meta in metadata:
@@ -257,10 +261,12 @@ def select_meta_ids(metadata: list[MetaPath]) -> list[int]:
         log.debug(f"Processing {meta.file} - found {len(meta_headers)} headers.")
         # We how have to process the selections, from right to left, in order
         # to select the values in this metadata
-        
+
         for sel in meta.selections:
             # The variable must be in the headers
-            log.debug(f"Selecting variable {sel.filter_variable} on values {sel.filter_values}")
+            log.debug(
+                f"Selecting variable {sel.filter_variable} on values {sel.filter_values}"
+            )
             assert (
                 sel.filter_variable in meta_headers
             ), f"Variable {sel.filter_variable} not found in metadata headers ({meta_headers})"
@@ -283,27 +289,31 @@ def select_meta_ids(metadata: list[MetaPath]) -> list[int]:
                     len(var_values), sel_indexes
                 )  # We need to select every OTHER index
                 log.debug(f"Inverted selection to {len(sel_indexes)} indexes.")
-            
+
             # Now we need to add or remove this selection's indexes to the more
             # generic meta index
             if sel.union is UnionSign.NEGATIVE:
                 # we need to remove these from the indexes
                 old_len = len(this_meta_indexes)
                 this_meta_indexes = [x for x in this_meta_indexes if x in sel_indexes]
-                log.debug(f"Negative union: removed {len(this_meta_indexes) - old_len} indexes.")
+                log.debug(
+                    f"Negative union: removed {len(this_meta_indexes) - old_len} indexes."
+                )
             elif sel.union is UnionSign.POSITIVE:
                 # we need to add these from the indexes
                 old_len = len(this_meta_indexes)
                 this_meta_indexes.extend(sel_indexes)
                 this_meta_indexes = list(set(this_meta_indexes))  # remove duplicates
-                log.debug(f"Positive union: added {len(this_meta_indexes) - old_len} indexes")
-            
+                log.debug(
+                    f"Positive union: added {len(this_meta_indexes) - old_len} indexes"
+                )
+
         # When we get here, the indexes are correct, and we parsed all selections
         # We now have to convert from the indexes to the IDs
         # We always add here.
         meta_ids = xsv_select(meta.file, meta.selection_var)
         selected_ids.extend([meta_ids[i] for i in this_meta_indexes])
-    
+
     # After parsing all selections, we just return.
     log.debug(f"Returning {len(selected_ids)} ids")
     return selected_ids
@@ -323,16 +333,18 @@ def metasplit(
     target_headers = get_headers(input_file, input_delimiter)
 
     if len(target_headers) == 1:
-        log.warn("I only read one header. This might mean you gave me the wrong delimiter.")
+        log.warn(
+            "I only read one header. This might mean you gave me the wrong delimiter."
+        )
 
     # We can now select the columns of interest
     selected_ids = select_meta_ids(metadata)
-    
+
     # We now have our Ids. We have to check if they are all in the
     # target file and discard them if we are told to ignore the missing IDs
     if ignore_missing:
         selected_ids = [id for id in selected_ids if id in target_headers]
-    
+
     if always_include:
         selected_ids.extend(always_include)
         selected_ids = list(dict.fromkeys(selected_ids))
@@ -359,4 +371,3 @@ def metasplit(
     )
 
     log.debug("Done!")
-
