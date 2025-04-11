@@ -13,7 +13,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "colorama==0.4.6"
+    "colorama"
 ]
 
 [project.urls]
